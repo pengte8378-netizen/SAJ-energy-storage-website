@@ -2,3 +2,6 @@ allowBuilds:
   core-js: true
 onlyBuiltDependencies:
   - core-js
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
