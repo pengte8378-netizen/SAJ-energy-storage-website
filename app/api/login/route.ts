@@ -1,3 +1,4 @@
+import { issueToken } from "../_auth";
 const accounts: Record<string,string> = {
   "pengte@saj.com": "u1",
   "liusj@saj.com": "u2",
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
     if (!userId || !password || !configured[userId] || await sha256(password) !== configured[userId]) {
       return Response.json({ error: "账号或密码不正确" }, { status: 401 });
     }
-    return Response.json({ userId });
+    return Response.json({ userId, token: await issueToken(userId) });
   } catch {
     return Response.json({ error: "请求格式不正确" }, { status: 400 });
   }

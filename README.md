@@ -40,4 +40,4 @@ pnpm test
 - 杨永强（产品经理）：yangyq@saj.com
 - 覃凯璐（产品运营经理）：qinkl@saj.com
 
-当前发布版本为可交互 MVP，数据保存在浏览器本地存储中，适合需求与交互试运行。生产多用户版本应按需求说明书接入 Supabase Auth、PostgreSQL 与 RLS。
+当前 Cloudflare 版本使用 Workers API、D1 共享数据库和签名会话令牌。四个账号在不同浏览器或设备登录后读取同一需求池；旧版浏览器本地需求会在首次登录时自动迁移到 D1。
