@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ContentAssetManager, defaultContentAssets, renderContentAssetPage, type ContentAsset } from "./content-assets";
+import { LoadAnalysisPanel, type AiRecommendation } from "./load-analysis";
 
 type Scenario = "new" | "retrofit" | "storage" | "backup" | "vpp";
 type Product = "CHS2" | "CHS3" | "CM2";
@@ -91,6 +92,7 @@ export default function Home() {
   const [menu, setMenu] = useState(false);
   const [modal, setModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [configurationMode, setConfigurationMode] = useState<"manual" | "ai">("manual");
   const [preferredProduct, setPreferredProduct] = useState<Product | "AUTO">("AUTO");
   const [adminView, setAdminView] = useState<"products" | "rules" | "content" | null>(null);
   const [toast, setToast] = useState("所有输入将自动保存");
@@ -149,6 +151,11 @@ export default function Home() {
     window.setTimeout(() => {
       const nextResult = calculate(req, preferredProduct === "AUTO" ? undefined : preferredProduct, project.country); setResult(nextResult); setBom(nextResult.bom); next(3); setToast(`配置完成：推荐 ${nextResult.productLabel} 系列`);
     }, 650);
+  }
+  function applyAiRecommendation(recommendation: AiRecommendation) {
+    setReq((current) => ({ ...current, power: Math.round(recommendation.recommended_power_kw), capacity: Math.round(recommendation.recommended_capacity_kwh) }));
+    setPreferredProduct("AUTO");
+    setToast(`已采用AI建议：${recommendation.recommended_power_kw} kW / ${recommendation.recommended_capacity_kwh} kWh，请生成最终配置`);
   }
   function updateQuantity(index: number, quantity: number) { setBom((rows) => rows.map((row, i) => i === index ? { ...row, qty: Math.max(1, quantity || 1) } : row)); }
   function exportData() {
@@ -219,6 +226,8 @@ export default function Home() {
 
         {step === 2 && <>
           <Heading n="02" title="定义系统需求" sub="选择应用场景并填写关键工程参数，推荐引擎将实时检查输入完整性。" badge="已填写 20 / 22" />
+          <Panel title="00 · 方案生成方式" note="两种模式可随时切换"><div className="product-choice"><button className={configurationMode === "manual" ? "selected" : ""} onClick={() => setConfigurationMode("manual")}><b>参数配置模式</b><small>直接输入目标功率与容量</small></button><button className={configurationMode === "ai" ? "selected" : ""} onClick={() => setConfigurationMode("ai")}><b>AI负荷分析模式</b><small>上传负荷CSV，由DeepSeek自动推荐</small></button></div></Panel>
+          {configurationMode === "ai" && <LoadAnalysisPanel project={project} requirements={{ transformer: req.transformer, pv: req.pv, voltage: req.voltage, backup: req.backup, coupling: req.coupling, existingGridPv: req.existingGridPv }} onApply={applyAiRecommendation} />}
           <Panel title="01 · 应用场景" note="单选"><div className="scenario-grid">{scenarios.map((item) => <button key={item.id} className={req.scenario === item.id ? "selected" : ""} onClick={() => setReq({ ...req, scenario: item.id, coupling: item.id === "new" ? "DC" : "AC", existingGridPv: item.id === "retrofit" ? true : req.existingGridPv, pvMeter: item.id === "retrofit" ? req.pvMeter : false })}><i>{item.mark}</i><b>{item.title}</b><small>{item.sub}</small><em>✓</em></button>)}</div></Panel>
           <Panel title="02 · 产品系列偏好" note={backupRestricted ? "备电/离网模式仅支持 CHS2 / CHS3" : "可使用自动推荐或人工指定"}><div className="product-choice">{(["AUTO", "CHS2", "CHS3", "CM2"] as const).map((item) => <button key={item} className={preferredProduct === item ? "selected" : ""} disabled={item === "CM2" && backupRestricted} onClick={() => setPreferredProduct(item)}><b>{item === "AUTO" ? "智能推荐" : item}</b><small>{item === "AUTO" ? "按容量规则自动匹配" : item === "CM2" ? (backupRestricted ? "备电/离网模式不可选" : "AC 耦合一体化储能柜") : item === "CHS3" ? "液冷混合储能系统" : "紧凑型混合储能系统"}</small></button>)}</div></Panel>
           <Panel title="03 · 功率与容量目标" note="推荐依据核心参数"><div className="metric-grid"><Metric label="目标储能功率" value={req.power} unit="kW" max={1500} set={(value: number) => setReq({ ...req, power: value })} /><Metric label="目标储能容量" value={req.capacity} unit="kWh" max={3000} set={(value: number) => setReq({ ...req, capacity: value })} /><Metric label="光伏装机容量" value={req.pv} unit="kW" max={2000} set={(value: number) => setReq({ ...req, pv: value })} /></div><div className="duration"><span>目标充放电时长</span><b>{(req.capacity / req.power || 0).toFixed(1)} h</b><small>由容量 ÷ 功率自动计算</small></div></Panel>
