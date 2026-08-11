@@ -1,3 +1,5 @@
+import { env } from "cloudflare:workers";
+
 type RequestPayload = {
   features: Record<string, unknown>;
   goal: string;
@@ -22,7 +24,8 @@ function isRecommendation(value: unknown) {
 }
 
 export async function POST(request: Request) {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  const bindings = env as unknown as { DEEPSEEK_API_KEY?: string; DEEPSEEK_MODEL?: string };
+  const apiKey = bindings.DEEPSEEK_API_KEY;
   if (!apiKey) return Response.json({ error: "DeepSeek API尚未配置，请由管理员设置DEEPSEEK_API_KEY。" }, { status: 503 });
   let body: RequestPayload;
   try { body = await request.json() as RequestPayload; }
@@ -37,7 +40,7 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       signal: controller.signal,
       body: JSON.stringify({
-        model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
+        model: bindings.DEEPSEEK_MODEL || "deepseek-v4-flash",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `请用JSON分析以下脱敏项目数据：${JSON.stringify(body)}` },
