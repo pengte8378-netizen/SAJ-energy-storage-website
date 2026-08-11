@@ -37,7 +37,7 @@ export const defaultContentAssets: ContentAsset[] = [
 
 const htmlEscape = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
 
-export function renderContentAssetPage(asset: ContentAsset, context: { product: string; productLabel?: string; productImage: string; power: number; capacity: number; inverterQty: number; batteryQty: number; country: string; industry: string; backup: boolean; pvMeterEnabled: boolean; pvCtRating: number }, page: number, total: number) {
+export function renderContentAssetPage(asset: ContentAsset, context: { product: string; productLabel?: string; productImage: string; power: number; capacity: number; inverterQty: number; batteryQty: number; country: string; industry: string; backup: boolean; pvMeterEnabled: boolean; pvCtRating: number | null }, page: number, total: number) {
   const moduleId = asset.moduleId || asset.id;
   const commonFacts: Record<string, string[]> = {
     company: ["成立于 2005 年", "1200+ 全球员工", "410+ 专利及软著", "覆盖 85+ 国家和地区"],
@@ -78,7 +78,11 @@ export function renderContentAssetPage(asset: ContentAsset, context: { product: 
       : context.inverterQty > 1
         ? `本方案包含 ${context.inverterQty} 台 CHS2，配置 1 台 eManager-C1 Pro，并使用其内置电表。`
         : "本方案为单台 CHS2，无需 eManager-C1 Pro，单独配置 1 台 DTSU666 电网电表。";
-  const pvMeterBody = context.pvMeterEnabled ? `客户选择已有并网光伏独立计量，已增加 PV Meter + CT，PV CT 预选 ${context.pvCtRating} A。` : "本方案未选择独立 PV Meter 计量。";
+  const pvMeterBody = context.pvMeterEnabled
+    ? context.pvCtRating
+      ? `客户选择已有并网光伏独立计量，已增加 PV Meter + CT，PV CT 预选 ${context.pvCtRating} A。`
+      : "客户选择已有并网光伏独立计量，但计算电流超过 5000 A 标准CT档位，需工程复核。"
+    : "本方案未选择独立 PV Meter 计量。";
   const body = moduleId === "ems" ? `${emsBody}\n电网 CT 按变压器容量计算并预选。${pvMeterBody}` : asset.body;
   const paragraphs = body.split(/\n+/).filter(Boolean).map((item) => `<p>${htmlEscape(item)}</p>`).join("");
   const matchedFacts = productFacts[context.product]?.[moduleId] || commonFacts[moduleId] || [asset.category, asset.tags, context.product, `${context.power} kW / ${context.capacity} kWh`];

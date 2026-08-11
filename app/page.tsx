@@ -40,8 +40,8 @@ function voltageValue(value: string) {
 }
 
 function selectCtRating(current: number) {
-  const ratings = [100, 150, 200, 250, 300, 400, 500, 600, 800, 1000, 1200, 1500, 2000, 2500, 3000, 4000, 5000];
-  return ratings.find((rating) => rating >= current) ?? Math.ceil(current / 1000) * 1000;
+  const ratings = [250, 500, 1000, 2000, 3000, 4000, 5000] as const;
+  return ratings.find((rating) => rating >= current) ?? null;
 }
 
 function calculate(req: any, preferred?: Product, country = "中国") {
@@ -68,7 +68,9 @@ function calculate(req: any, preferred?: Product, country = "中国") {
   const lineVoltage = voltageValue(req.voltage);
   const gridCurrent = req.transformer * 1000 / (Math.sqrt(3) * lineVoltage);
   const gridCtRating = selectCtRating(gridCurrent);
-  bom.push({ code: `GRID-CT-${gridCtRating}A`, name: "电网计量电流互感器", type: "电网计量附件", qty: 3, reason: `按 ${req.transformer} kVA / ${lineVoltage} V 计算 ${gridCurrent.toFixed(0)} A，向上匹配 ${gridCtRating} A` });
+  bom.push(gridCtRating
+    ? { code: `GRID-CT-${gridCtRating}A`, name: "电网计量电流互感器", type: "电网计量附件", qty: 3, reason: `按 ${req.transformer} kVA / ${lineVoltage} V 计算 ${gridCurrent.toFixed(0)} A，向上匹配 ${gridCtRating} A` }
+    : { code: "GRID-CT-TBD", name: "电网计量电流互感器（工程复核）", type: "电网计量附件", qty: 3, reason: `计算电流 ${gridCurrent.toFixed(0)} A 超过 5000 A 标准档位，不自动低配` });
 
   const pvMeterEnabled = req.coupling === "AC" && req.existingGridPv && req.pvMeter;
   const pvCurrent = req.pv * 1000 / (Math.sqrt(3) * lineVoltage * (req.pvPowerFactor || 1));
@@ -76,7 +78,9 @@ function calculate(req: any, preferred?: Product, country = "中国") {
   if (pvMeterEnabled) {
     const pvMeterCode = product === "CHS3" ? "EM53ER REV.A(1B1T,5A)" : "DTSU666";
     bom.push({ code: pvMeterCode, name: "PV Meter（已有并网光伏计量）", type: "光伏计量", qty: 1, reason: `客户选择增加 PV Meter；按 ${productLabel} 规则配置` });
-    bom.push({ code: `PV-CT-${pvCtRating}A`, name: "PV Meter 电流互感器", type: "光伏计量附件", qty: 3, reason: `按 ${req.pv} kW / ${lineVoltage} V 计算 ${pvCurrent.toFixed(0)} A，向上匹配 ${pvCtRating} A` });
+    bom.push(pvCtRating
+      ? { code: `PV-CT-${pvCtRating}A`, name: "PV Meter 电流互感器", type: "光伏计量附件", qty: 3, reason: `按 ${req.pv} kW / ${lineVoltage} V 计算 ${pvCurrent.toFixed(0)} A，向上匹配 ${pvCtRating} A` }
+      : { code: "PV-CT-TBD", name: "PV Meter 电流互感器（工程复核）", type: "光伏计量附件", qty: 3, reason: `计算电流 ${pvCurrent.toFixed(0)} A 超过 5000 A 标准档位，不自动低配` });
   }
   return { product, productLabel, modelCode, qty: inverterQty, inverterQty, batteryQty, power: inverterQty * p.power, capacity: product === "CM2" ? inverterQty * p.capacity : batteryQty * p.capacity, gridCurrent, gridCtRating, pvMeterEnabled, pvCurrent, pvCtRating, bom };
 }
@@ -121,8 +125,10 @@ export default function Home() {
     if (result.power < req.power * 1.05) rows.push(["warning", "功率余量偏低", "当前设计余量低于 5%，建议核对冲击负载。"]); 
     if (req.maxTemp > 45) rows.push(["warning", "高温降额风险", "最高温度超过 45°C，需复核设备降额曲线。"]); 
     if (result.power > req.transformer * 0.8) rows.push(["warning", "变压器容量工程复核", "推荐储能功率超过变压器额定容量的 80%，方案可继续生成，但需结合现场负载、并网点容量和保护定值复核。"]);
-    rows.push(["info", "电网计量", `${result.productLabel} 已按产品及台数规则配置电网电表，Grid CT 预选 ${result.gridCtRating} A。`]);
-    if (result.pvMeterEnabled) rows.push(["info", "已有光伏独立计量", `已增加 PV Meter + CT；光伏交流电流约 ${result.pvCurrent.toFixed(0)} A，PV CT 预选 ${result.pvCtRating} A。`]);
+    if (result.gridCtRating) rows.push(["info", "电网计量", `${result.productLabel} 已按产品及台数规则配置电网电表，Grid CT 预选 ${result.gridCtRating} A。`]);
+    else rows.push(["warning", "电网 CT 超出标准档位", `计算电流约 ${result.gridCurrent.toFixed(0)} A，超过 5000 A，需工程复核。`]);
+    if (result.pvMeterEnabled && result.pvCtRating) rows.push(["info", "已有光伏独立计量", `已增加 PV Meter + CT；光伏交流电流约 ${result.pvCurrent.toFixed(0)} A，PV CT 预选 ${result.pvCtRating} A。`]);
+    if (result.pvMeterEnabled && !result.pvCtRating) rows.push(["warning", "PV CT 超出标准档位", `光伏交流电流约 ${result.pvCurrent.toFixed(0)} A，超过 5000 A，需工程复核。`]);
     if (req.backup) rows.push(["info", "关键负载备电", "CM2 已禁用；方案按 CHS2 / CHS3 并离网能力配置，需确认关键负载清单。"]);
     return rows;
   }, [req, result]);
