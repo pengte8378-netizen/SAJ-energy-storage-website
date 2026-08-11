@@ -35,28 +35,33 @@ export async function POST(request: Request) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45000);
   try {
-    const response = await fetch("https://api.deepseek.com/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: bindings.DEEPSEEK_MODEL || "deepseek-v4-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `请用JSON分析以下脱敏项目数据：${JSON.stringify(body)}` },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.2,
-        max_tokens: 1800,
-      }),
-    });
-    const result = await response.json() as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
-    if (!response.ok) return Response.json({ error: result.error?.message || "DeepSeek API请求失败。" }, { status: 502 });
-    const content = result.choices?.[0]?.message?.content;
-    if (!content) return Response.json({ error: "DeepSeek返回了空结果，请重试。" }, { status: 502 });
-    const recommendation = JSON.parse(content) as unknown;
-    if (!isRecommendation(recommendation)) return Response.json({ error: "AI结果未通过结构校验，请重试。" }, { status: 502 });
-    return Response.json({ recommendation });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: bindings.DEEPSEEK_MODEL || "deepseek-v4-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `请用JSON分析以下脱敏项目数据：${JSON.stringify(body)}${attempt ? "。上一次返回为空或格式不合格，请严格按照JSON示例完整输出。" : ""}` },
+          ],
+          thinking: { type: "disabled" },
+          response_format: { type: "json_object" },
+          temperature: 0.2,
+          max_tokens: 1800,
+        }),
+      });
+      const result = await response.json() as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
+      if (!response.ok) return Response.json({ error: result.error?.message || "DeepSeek API请求失败。" }, { status: 502 });
+      const content = result.choices?.[0]?.message?.content;
+      if (!content) continue;
+      try {
+        const recommendation = JSON.parse(content) as unknown;
+        if (isRecommendation(recommendation)) return Response.json({ recommendation });
+      } catch { /* retry once with a stricter prompt */ }
+    }
+    return Response.json({ error: "DeepSeek未返回有效的结构化结果，请稍后重试。" }, { status: 502 });
   } catch (error) {
     return Response.json({ error: error instanceof Error && error.name === "AbortError" ? "DeepSeek分析超时，请稍后重试。" : "AI分析服务暂时不可用。" }, { status: 502 });
   } finally { clearTimeout(timeout); }
